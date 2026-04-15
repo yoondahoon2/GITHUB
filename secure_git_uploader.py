@@ -7,23 +7,23 @@ import subprocess
 import tkinter as tk
 from tkinter import filedialog
 
-# 검사할 파일 확장자
+# File extensions to scan
 SCAN_EXTENSIONS = (
     ".py", ".txt", ".bat", ".json", ".env", ".ini", ".cfg",
     ".yaml", ".yml", ".ps1", ".js", ".ts", ".md"
 )
 
-# 제외할 폴더
+# Folders to exclude
 EXCLUDE_DIRS = {
     ".git", "__pycache__", "node_modules", "dist", "build", ".venv", "venv"
 }
 
-# 이메일
+# Email pattern
 EMAIL_PATTERN = re.compile(
     r'(?i)\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
 )
 
-# Bearer [REDACTED]
+# Bearer token
 BEARER_PATTERN = re.compile(
     r'(?i)(Bearer\s+)([A-Za-z0-9._\-]+)'
 )
@@ -33,7 +33,7 @@ GOOGLE_API_PATTERN = re.compile(
     r'\bAIza[0-9A-Za-z\-_]{20,}\b'
 )
 
-# 일반 key=value / key: value 형태
+# Generic key=value patterns
 GENERIC_SECRET_PATTERN = re.compile(
     r'''(?ix)
     \b(
@@ -54,7 +54,7 @@ GENERIC_SECRET_PATTERN = re.compile(
     '''
 )
 
-# JSON 스타일 "key": "value"
+# JSON style "key": "value"
 JSON_SECRET_PATTERN = re.compile(
     r'''(?ix)
     ("
@@ -118,20 +118,20 @@ def run_upload():
 
     root = tk.Tk()
     root.withdraw()
-    source_path = filedialog.askdirectory(title="업로드할 폴더 선택")
+    source_path = filedialog.askdirectory(title="Select folder to upload")
     root.destroy()
 
     if not source_path:
-        print("취소됨")
+        print("Cancelled")
         return
 
     repo_name = os.path.basename(source_path).replace(" ", "-")
 
-    # 매번 새 임시폴더 생성
+    # Create temp folder
     temp_path = tempfile.mkdtemp(prefix="github_upload_")
 
     try:
-        # 원본 복사
+        # Copy source
         shutil.copytree(
             source_path,
             temp_path,
@@ -141,13 +141,12 @@ def run_upload():
             )
         )
 
-        print(f"\n🧹 보안 세탁 시작: {source_path}")
-        print(f"📂 임시 작업 경로: {temp_path}")
+        print(f"\n🔍 Starting secure scan: {source_path}")
+        print(f"📂 Temp working directory: {temp_path}")
 
         file_changed_count = 0
         total_redactions = 0
 
-        # 파일 검사
         for root_dir, dirs, files in os.walk(temp_path):
             dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
 
@@ -169,19 +168,18 @@ def run_upload():
 
                         file_changed_count += 1
                         total_redactions += hits
-                        print(f"  ✅ 가림 처리: {file_path}  ({hits}개)")
+                        print(f"  ✔ Redacted: {file_path}  ({hits} items)")
                 except Exception as e:
-                    print(f"  ⚠️ 파일 검사 실패: {file_path} / {e}")
+                    print(f"  ⚠ Scan failed: {file_path} / {e}")
 
-        print(f"\n총 수정 파일 수: {file_changed_count}")
-        print(f"총 가림 처리 수: {total_redactions}")
+        print(f"\nFiles modified: {file_changed_count}")
+        print(f"Total redactions: {total_redactions}")
 
         os.chdir(temp_path)
 
-        is_private = input("\n❓ 비공개(Private)로 설정할까요? (Y/N): ").strip().lower() == "y"
+        is_private = input("\nSet repository to Private? (Y/N): ").strip().lower() == "y"
         visibility = "--private" if is_private else "--public"
 
-        # gitignore 생성
         with open(".gitignore", "w", encoding="utf-8") as f:
             f.write(
                 ".env\n"
@@ -202,7 +200,7 @@ def run_upload():
         subprocess.run(["git", "commit", "-m", "Secure upload with redacted secrets"], check=True)
         subprocess.run(["git", "branch", "-M", "main"], check=True)
 
-        print(f"\n🚀 GitHub에 '{repo_name}' 생성 및 업로드 중...")
+        print(f"\n🚀 Creating and pushing repo: {repo_name}")
         subprocess.run(
             ["gh", "repo", "create", repo_name, visibility, "--source=.", "--remote=origin", "--push"],
             check=True
@@ -215,25 +213,25 @@ def run_upload():
             check=True
         ).stdout.strip()
 
-        print("\n✨ 완료")
+        print("\n✔ Done")
         print(f"🔗 {repo_url}")
-        print("※ GitHub에서 민감정보가 실제로 가려졌는지 꼭 한 번 확인해.")
+        print("⚠ Verify on GitHub that all sensitive data is redacted.")
 
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ 명령 실행 오류: {e}")
+        print(f"\n❌ Command error: {e}")
     except Exception as e:
-        print(f"\n❌ 오류: {e}")
+        print(f"\n❌ Error: {e}")
     finally:
         try:
             os.chdir(original_cwd)
-        except Exception:
+        except:
             pass
 
         if temp_path and os.path.exists(temp_path):
             try:
                 shutil.rmtree(temp_path, onerror=remove_readonly)
             except Exception as cleanup_error:
-                print(f"⚠️ 임시 폴더 삭제 실패: {cleanup_error}")
+                print(f"⚠ Temp cleanup failed: {cleanup_error}")
 
 if __name__ == "__main__":
     run_upload()
